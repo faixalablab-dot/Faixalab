@@ -1,4 +1,10 @@
 FROM node:24-bookworm-slim AS node
+FROM node AS youtube_source
+WORKDIR /opt/youtube-source
+COPY cloud/youtube-source/package.json cloud/youtube-source/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY cloud/youtube-source/extract.mjs ./
+
 FROM brainicism/bgutil-ytdlp-pot-provider:2.0.2 AS bgutil
 FROM python:3.12-slim-bookworm
 
@@ -8,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd --create-home --uid 1000 faixalab
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=youtube_source /opt/youtube-source /opt/youtube-source
 COPY --from=bgutil /usr/local/bin/node /opt/bgutil-node
 COPY --from=bgutil /app /opt/bgutil
 WORKDIR /app
@@ -15,11 +22,13 @@ COPY app/requirements-source.txt ./requirements-source.txt
 ARG YTDLP_VERSION=2026.11.04.232659dev
 RUN pip install --no-cache-dir --pre -r requirements-source.txt \
     "yt-dlp[default]==${YTDLP_VERSION}" "bgutil-ytdlp-pot-provider==2.0.2"
-COPY app/faixalab/__init__.py app/faixalab/media.py app/faixalab/source_api.py app/faixalab/youtube_support.py app/faixalab/pot_ab_test.py ./faixalab/
+COPY app/faixalab/__init__.py app/faixalab/media.py app/faixalab/source_api.py app/faixalab/youtube_support.py app/faixalab/pot_ab_test.py app/faixalab/youtube_native.py ./faixalab/
 ENV PYTHONUNBUFFERED=1 \
     FAIXALAB_ENABLE_POT_AB=1 \
+    FAIXALAB_YOUTUBE_EXTRACTOR=native \
     FAIXALAB_AUDIO_SOURCE_DATA=/tmp/faixalab-audio-source
 
 USER faixalab
 RUN python -m faixalab.pot_ab_test --check
+RUN node --input-type=module -e "await import('/opt/youtube-source/extract.mjs')"
 CMD ["python", "-m", "faixalab.source_api", "--host", "0.0.0.0"]

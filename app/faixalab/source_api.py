@@ -28,6 +28,10 @@ def create_app(root, key):
     lock = Lock()
     stop = Event()
     pool = None
+    extract = download_youtube
+    if os.environ.get('FAIXALAB_YOUTUBE_EXTRACTOR') == 'native':
+        from .youtube_native import download_youtube as extract
+        root /= 'native'
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -73,7 +77,7 @@ def create_app(root, key):
         try:
             directory.mkdir(parents=True, exist_ok=True)
             url = f'https://www.youtube.com/watch?v={identifier}'
-            audio, title = download_youtube(url, directory, stop, lambda stage, progress: update(
+            audio, title = extract(url, directory, stop, lambda stage, progress: update(
                 identifier, stage=stage, progress=progress))
             if audio.resolve().parent != directory or not audio.is_file() or not audio.stat().st_size:
                 raise RuntimeError('O extrator não entregou um arquivo de áudio utilizável.')
@@ -86,6 +90,8 @@ def create_app(root, key):
 
     @app.get('/v1/health')
     def health():
+        if extract is not download_youtube:
+            return {'status': 'ok', 'service': 'faixalab-audio-source', 'extractor': 'native'}
         return {'status': 'ok', 'service': 'faixalab-audio-source'}
 
     if os.environ.get('FAIXALAB_ENABLE_POT_AB') == '1':

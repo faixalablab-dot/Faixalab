@@ -1,0 +1,7 @@
+{
+  "name": "faixalab-youtube-source",
+  "private": true,
+  "dependencies": {
+    "googlevideo": "5.0.1"
+  }
+}
