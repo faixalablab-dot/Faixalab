@@ -3,7 +3,7 @@ FROM brainicism/bgutil-ytdlp-pot-provider:2.0.2 AS bgutil
 FROM python:3.12-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates ffmpeg libstdc++6 \
+    ca-certificates ffmpeg libatomic1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 faixalab
 
@@ -16,12 +16,10 @@ ARG YTDLP_VERSION=2026.11.04.232659dev
 RUN pip install --no-cache-dir --pre -r requirements-source.txt \
     "yt-dlp[default]==${YTDLP_VERSION}" "bgutil-ytdlp-pot-provider==2.0.2"
 COPY app/faixalab/__init__.py app/faixalab/media.py app/faixalab/source_api.py app/faixalab/youtube_support.py app/faixalab/pot_ab_test.py ./faixalab/
-RUN /opt/bgutil-node --version \
-    && python -c "from faixalab.youtube_support import check_support; check_support()"
-
 ENV PYTHONUNBUFFERED=1 \
     FAIXALAB_ENABLE_POT_AB=1 \
     FAIXALAB_AUDIO_SOURCE_DATA=/tmp/faixalab-audio-source
 
 USER faixalab
+RUN python -m faixalab.pot_ab_test --check
 CMD ["python", "-m", "faixalab.source_api", "--host", "0.0.0.0"]

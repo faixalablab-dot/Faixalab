@@ -1,5 +1,6 @@
 """A/B diagnostic for the Render test service."""
 
+from contextlib import contextmanager
 from importlib.metadata import version
 import json
 from pathlib import Path
@@ -131,40 +132,14 @@ def provider_version(process):
     raise RuntimeError('O provedor local não respondeu ao preflight.')
 
 
-def run_probe(stop, report):
-    runtime = check_support()['runtime']
-    ffmpeg = subprocess.check_output(['ffmpeg', '-version'], text=True, timeout=5).splitlines()[0]
+@contextmanager
+def running_provider(output=subprocess.DEVNULL):
     with subprocess.Popen(
         ['/opt/bgutil-node', 'build/main.js', '--host', '127.0.0.1'],
-        cwd=BGUTIL_DIRECTORY, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        cwd=BGUTIL_DIRECTORY, stdout=output, stderr=output,
     ) as provider:
         try:
-            report(environment={
-                'client': CLIENT, 'runtime': runtime['name'] + ' ' + runtime['version'],
-                'yt_dlp': version('yt-dlp'), 'ejs': version('yt-dlp-ejs'),
-                'plugin': version('bgutil-ytdlp-pot-provider'), 'provider': provider_version(provider),
-                'ffmpeg': ffmpeg,
-            })
-            rows = []
-            for repeat in range(REPEAT):
-                for index, video in enumerate(VIDEOS):
-                    modes = ('without', 'with') if (repeat + index) % 2 == 0 else ('with', 'without')
-                    for mode in modes:
-                        if stop.is_set():
-                            return
-                        with TemporaryDirectory(prefix='faixalab-pot-ab-') as folder:
-                            try:
-                                result = subprocess.check_output(
-                                    [sys.executable, '-m', __name__, video, mode, folder],
-                                    text=True, timeout=65, stderr=subprocess.DEVNULL,
-                                )
-                                row = json.loads(result)
-                            except (OSError, ValueError, subprocess.SubprocessError):
-                                row = {'video': video, 'mode': mode, 'ok': False, 'error': 'attempt_failed_or_timed_out'}
-                        rows.append(row)
-                        report(rows=list(rows))
-                        if stop.wait(5):
-                            return
+            yield provider_version(provider)
         finally:
             if provider.poll() is None:
                 provider.terminate()
@@ -174,8 +149,45 @@ def run_probe(stop, report):
                     provider.kill()
 
 
+def run_probe(stop, report):
+    runtime = check_support()['runtime']
+    ffmpeg = subprocess.check_output(['ffmpeg', '-version'], text=True, timeout=5).splitlines()[0]
+    with running_provider() as provider:
+        report(environment={
+            'client': CLIENT, 'runtime': runtime['name'] + ' ' + runtime['version'],
+            'yt_dlp': version('yt-dlp'), 'ejs': version('yt-dlp-ejs'),
+            'plugin': version('bgutil-ytdlp-pot-provider'), 'provider': provider,
+            'ffmpeg': ffmpeg,
+        })
+        rows = []
+        for repeat in range(REPEAT):
+            for index, video in enumerate(VIDEOS):
+                modes = ('without', 'with') if (repeat + index) % 2 == 0 else ('with', 'without')
+                for mode in modes:
+                    if stop.is_set():
+                        return
+                    with TemporaryDirectory(prefix='faixalab-pot-ab-') as folder:
+                        try:
+                            result = subprocess.check_output(
+                                [sys.executable, '-m', __name__, video, mode, folder],
+                                text=True, timeout=65, stderr=subprocess.DEVNULL,
+                            )
+                            row = json.loads(result)
+                        except (OSError, ValueError, subprocess.SubprocessError):
+                            row = {'video': video, 'mode': mode, 'ok': False, 'error': 'attempt_failed_or_timed_out'}
+                    rows.append(row)
+                    report(rows=list(rows))
+                    if stop.wait(5):
+                        return
+
+
 if __name__ == '__main__':
-    _, identifier, condition, destination = sys.argv
-    if identifier not in VIDEOS or condition not in {'with', 'without'}:
-        raise SystemExit(2)
-    print(json.dumps(run_attempt(identifier, condition, Path(destination).resolve())))
+    if sys.argv[1:] == ['--check']:
+        check_support()
+        with running_provider(output=None) as provider:
+            print(f'bgutil {provider}: /ping OK')
+    else:
+        _, identifier, condition, destination = sys.argv
+        if identifier not in VIDEOS or condition not in {'with', 'without'}:
+            raise SystemExit(2)
+        print(json.dumps(run_attempt(identifier, condition, Path(destination).resolve())))
