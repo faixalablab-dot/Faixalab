@@ -375,15 +375,17 @@ class RefineSettings(BaseModel):
 
 @app.post('/api/projects/{identifier}/refine', status_code=202)
 def refine(identifier: str, settings: RefineSettings | None = None):
-    p = project(identifier)
-    if not p.get('stems') or p['status'] in {'queued', 'processing'}:
-        raise HTTPException(409, 'Aguarde o processamento atual terminar.')
-    if not (storage.project_dir(identifier) / 'original.wav').is_file():
-        raise HTTPException(409, 'Importe o áudio novamente para refinar este projeto.')
-    quality = settings.quality if settings else 'quality'
-    options = Options.model_validate({**p.get('options', {}), 'quality': quality}).checked()
-    storage.update_project(identifier, options=options, status='queued', stage='Na fila para refinar', progress=0)
-    pipeline.submit(identifier, retry='separation')
+    with pipeline.JOB_LOCK:
+        p = project(identifier)
+        if p['status'] in {'queued', 'processing'} or (not p.get('stems') and p['status'] not in {'failed', 'cancelled'}):
+            raise HTTPException(409, 'Aguarde o processamento atual terminar.')
+        if not (storage.project_dir(identifier) / 'original.wav').is_file():
+            raise HTTPException(409, 'Importe o áudio novamente para separar este projeto.')
+        quality = settings.quality if settings else 'quality'
+        options = Options.model_validate({**p.get('options', {}), 'quality': quality}).checked()
+        stage = 'Na fila para refinar' if p.get('stems') else 'Na fila para separar o áudio salvo'
+        storage.update_project(identifier, options=options, status='queued', stage=stage, progress=0, error=None)
+        pipeline.submit(identifier, retry='separation')
     return {'queued': True}
 
 

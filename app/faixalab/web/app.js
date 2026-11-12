@@ -559,7 +559,8 @@ function renderProject(p, force = false) {
       }),
   );
   $("#export-project").disabled = !p.stems?.length;
-  $("#refine-audio").disabled = busy || !p.stems?.length;
+  const canRetrySeparation = ["failed", "cancelled"].includes(p.status) && p.duration > 0;
+  $("#refine-audio").disabled = busy || (!p.stems?.length && !canRetrySeparation);
   $("#stem-settings").disabled = !p.stems?.length;
   $("#split-guitars").hidden = !p.stems?.some(s => s.name === "guitar");
   $("#split-guitars").disabled = busy;
@@ -685,11 +686,13 @@ $("#cancel-job").onclick = async () => {
 };
 $("#refine-audio").onclick = async () => {
   if (!state.project) return;
+  const hasStems = Boolean(state.project.stems?.length);
   player.pause();
   try {
     await api(`/api/projects/${state.project.id}/refine`, { method: "POST", headers:{'Content-Type':'application/json'},body:JSON.stringify({quality:$('#refine-quality-option').value}) });
     await poll();
-    toast("Refinando as faixas e a cifra. Sua letra e suas correções serão preservadas.");
+    toast(hasStems ? "Refinando as faixas e a cifra. Sua letra e suas correções serão preservadas."
+      : "Separando as faixas a partir do áudio salvo.");
   } catch (error) { toast(error.message); }
 };
 $("#reanalyze-chords").onclick = async () => {

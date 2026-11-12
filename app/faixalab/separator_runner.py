@@ -4,11 +4,48 @@ import gc
 import json
 from pathlib import Path
 import random
+from urllib.error import URLError
 import torch
 import soundfile as sf
 from demucs.pretrained import get_model
 from demucs.apply import apply_model, BagOfModels
 from .compute import configure_torch
+
+
+DEMUCS_MIRROR = ('https://huggingface.co/iBoostAI/Demucs-v4/resolve/'
+                 'bffc1c135c7797974bfcb940f3a0ffe6ca793e35/')
+DEMUCS_CHECKPOINTS = {
+    'htdemucs': (
+        ('955717e8-8726e21a.th', '8726e21a993978c7ba086d3872e7608d7d5bfca646ca4aca459ffda844faa8b4'),
+    ),
+    'htdemucs_6s': (
+        ('5c90dfd2-34c22ccb.th', '34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd'),
+    ),
+    'htdemucs_ft': (
+        ('f7e0c4bc-ba3fe64a.th', 'ba3fe64ae8ef66ac9a4857222ce48efbdc5eb3ad375cb79dd13debee5aaa4066'),
+        ('d12395a8-e57c48e6.th', 'e57c48e6b0e38af4f7118d7bd08c49f0a0c0edf7d09143bdd902ea0d237303e6'),
+        ('92cfc3b6-ef3bcb9c.th', 'ef3bcb9c8b40d14ae5d51b6db2587339cc12c6b77c0be151ce6d69002e087bf2'),
+        ('04573f0d-f3cf25b2.th', 'f3cf25b222c4eed7cd49dd8b2c9597d50c18bd154090f7b919cfa5f93cf22c49'),
+    ),
+}
+
+
+def load_demucs(name):
+    try:
+        return get_model(name)
+    except (URLError, TimeoutError):
+        checkpoints = DEMUCS_CHECKPOINTS.get(name)
+        if checkpoints is None:
+            raise
+    cache = Path(torch.hub.get_dir()) / 'checkpoints'
+    cache.mkdir(parents=True, exist_ok=True)
+    for filename, checksum in checkpoints:
+        destination = cache / filename
+        if not destination.is_file():
+            print(f'Downloading Demucs checkpoint {filename}', flush=True)
+            torch.hub.download_url_to_file(DEMUCS_MIRROR + filename, destination,
+                                           hash_prefix=checksum, progress=False)
+    return get_model(name)
 
 
 class ProgressPool:
@@ -38,7 +75,7 @@ class ProgressPool:
 
 
 def infer(audio, name, device, shifts, overlap, report=None):
-    model = get_model(name).eval()
+    model = load_demucs(name).eval()
     reference = audio.mean(0)
     mean, scale = reference.mean(), reference.std().clamp_min(1e-8)
     normalized = ((audio - mean) / scale)[None]

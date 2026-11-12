@@ -299,6 +299,7 @@ def process_project(identifier, cancel_event, retry=None):
     try:
         p = storage.read_project(identifier)
         options = p['options']
+        first_separation = not retry or (retry == 'separation' and not p.get('stems'))
         def separation_progress(stage,value,**details):
             mapped=15+max(0,value-15)/3 if options.get('instrument_detail',False) else value
             progress(stage,mapped,**details)
@@ -367,7 +368,7 @@ def process_project(identifier, cancel_event, retry=None):
                 raise
             except Exception as exc:
                 warnings.append({'stage': 'chords', 'message': 'Não foi possível calcular as cifras: ' + str(exc)[-500:]})
-        if options.get('lyrics', True) and (not retry or retry == 'lyrics'):
+        if options.get('lyrics', True) and (first_separation or retry == 'lyrics'):
             try:
                 vocals, vocal_kind = transcription_audio(storage.read_project(identifier), folder)
                 lyrics, meta = timed('lyrics', transcribe, vocals, options, cancel_event, progress)
