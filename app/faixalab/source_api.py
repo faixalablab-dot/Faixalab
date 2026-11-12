@@ -88,6 +88,38 @@ def create_app(root, key):
     def health():
         return {'status': 'ok', 'service': 'faixalab-audio-source'}
 
+    if os.environ.get('FAIXALAB_ENABLE_POT_AB') == '1':
+        from .pot_ab_test import run_probe
+
+        probe = {'status': 'idle', 'rows': []}
+
+        def update_probe(**changes):
+            with lock:
+                probe.update(changes)
+
+        def run_pot_ab():
+            try:
+                run_probe(stop, update_probe)
+            except Exception:
+                update_probe(status='failed', error='provider_or_environment_unavailable')
+            else:
+                update_probe(status='interrupted' if stop.is_set() else 'finished')
+
+        @app.get('/v1/diagnostics/pot-ab')
+        def pot_ab_status():
+            with lock:
+                return dict(probe)
+
+        @app.post('/v1/diagnostics/pot-ab', status_code=202)
+        def submit_pot_ab():
+            with lock:
+                if pool is None:
+                    raise HTTPException(503, 'A API de áudio está iniciando.')
+                if probe['status'] == 'idle':
+                    probe['status'] = 'running'
+                    pool.submit(run_pot_ab)
+                return dict(probe)
+
     @app.post('/v1/youtube-jobs', status_code=202)
     def submit(data: YouTubeRequest):
         try:
