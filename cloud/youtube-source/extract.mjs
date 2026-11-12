@@ -113,9 +113,18 @@ export async function extract(videoId, path, fetcher = fetch) {
   const overall = AbortSignal.timeout(90_000);
   const pageResponse = await fetcher(`https://www.youtube.com/watch?v=${videoId}`, {
     headers: WATCH_HEADERS,
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.any([overall, AbortSignal.timeout(15_000)]),
   });
+  if (pageResponse.status >= 300 && pageResponse.status < 400) {
+    const location = pageResponse.headers.get('location');
+    const target = location && new URL(location, 'https://www.youtube.com');
+    await pageResponse.body?.cancel();
+    if (target?.hostname === 'www.google.com' && target.pathname.startsWith('/sorry/')) {
+      throw new SourceError(`O Google redirecionou a página do vídeo para a verificação de tráfego (HTTP ${pageResponse.status}).`);
+    }
+    throw new SourceError(`A página do vídeo redirecionou a requisição (HTTP ${pageResponse.status}).`);
+  }
   if (!pageResponse.ok) throw new SourceError(`A página do vídeo retornou HTTP ${pageResponse.status}.`);
   const page = await pageResponse.text();
   const player = readPlayer(page);
