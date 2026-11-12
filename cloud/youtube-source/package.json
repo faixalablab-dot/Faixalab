@@ -2,6 +2,7 @@
   "name": "faixalab-youtube-source",
   "private": true,
   "dependencies": {
-    "googlevideo": "5.0.1"
+    "googlevideo": "5.0.1",
+    "quickjs-emscripten": "0.32.0"
   }
 }

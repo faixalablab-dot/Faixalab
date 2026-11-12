@@ -22,6 +22,9 @@ COPY app/requirements-source.txt ./requirements-source.txt
 ARG YTDLP_VERSION=2026.11.04.232659dev
 RUN pip install --no-cache-dir --pre -r requirements-source.txt \
     "yt-dlp[default]==${YTDLP_VERSION}" "bgutil-ytdlp-pot-provider==2.0.2"
+RUN mkdir -p /opt/youtube-source/solver \
+    && solver_dir=$(python -c 'from pathlib import Path; from yt_dlp_ejs.yt import solver; print(Path(solver.__file__).parent)') \
+    && cp "$solver_dir/core.min.js" "$solver_dir/lib.min.js" /opt/youtube-source/solver/
 COPY app/faixalab/__init__.py app/faixalab/media.py app/faixalab/source_api.py app/faixalab/youtube_support.py app/faixalab/pot_ab_test.py app/faixalab/youtube_native.py ./faixalab/
 ENV PYTHONUNBUFFERED=1 \
     FAIXALAB_ENABLE_POT_AB=1 \

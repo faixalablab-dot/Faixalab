@@ -2,7 +2,7 @@
 set -euo pipefail
 
 directory=$(cd -- "$(dirname -- "$0")" && pwd)
-for command in node npm; do
+for command in node npm python3; do
     if ! command -v "$command" >/dev/null; then
         printf 'Comando necessário: %s\n' "$command" >&2
         exit 2
@@ -17,18 +17,18 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 ffmpeg_bin=${FFMPEG_BINARY:-$(command -v ffmpeg || true)}
+packages=('yt-dlp-ejs==0.8.0')
 if [[ -z "$ffmpeg_bin" ]]; then
-    if ! command -v python3 >/dev/null; then
-        printf 'Instale o FFmpeg ou use Python 3 para obter a versão portátil.\n' >&2
-        exit 2
-    fi
+    packages+=('imageio-ffmpeg==0.8.1')
     printf 'Preparando o FFmpeg portátil para este teste…\n' >&2
-    if ! python3 -m pip install --disable-pip-version-check --quiet --only-binary=:all: \
-        --target "$work/ffmpeg" 'imageio-ffmpeg==0.8.1'; then
-        printf 'Falha ao obter o FFmpeg portátil. Verifique se python3 -m pip está disponível.\n' >&2
-        exit 2
-    fi
-    ffmpeg_bin=$(PYTHONPATH="$work/ffmpeg" python3 -c 'from imageio_ffmpeg import get_ffmpeg_exe; print(get_ffmpeg_exe())')
+fi
+if ! python3 -m pip install --disable-pip-version-check --quiet --only-binary=:all: \
+    --target "$work/python" "${packages[@]}"; then
+    printf 'Falha ao preparar as dependências temporárias do teste.\n' >&2
+    exit 2
+fi
+if [[ -z "$ffmpeg_bin" ]]; then
+    ffmpeg_bin=$(PYTHONPATH="$work/python" python3 -c 'from imageio_ffmpeg import get_ffmpeg_exe; print(get_ffmpeg_exe())')
 fi
 if ! "$ffmpeg_bin" -version >/dev/null; then
     printf 'Não foi possível iniciar o FFmpeg.\n' >&2
@@ -36,6 +36,8 @@ if ! "$ffmpeg_bin" -version >/dev/null; then
 fi
 
 cp "$directory"/{package.json,package-lock.json,extract.mjs} "$work/"
+mkdir "$work/solver"
+cp "$work/python/yt_dlp_ejs/yt/solver"/{core,lib}.min.js "$work/solver/"
 npm --prefix "$work" ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null
 
 videos=("$@")

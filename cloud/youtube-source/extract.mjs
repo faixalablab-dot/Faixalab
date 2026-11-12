@@ -1,9 +1,11 @@
 import { createWriteStream } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 import { SabrStream } from 'googlevideo/sabr-stream';
 import { buildSabrFormat, EnabledTrackTypes } from 'googlevideo/utils';
+import { getQuickJS, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 
 const MAX_BYTES = 32 * 1024 * 1024;
 const MAX_SECONDS = 900;
@@ -28,6 +30,51 @@ function validateMediaUrl(url) {
     throw new SourceError('O player indicou um endereço de mídia fora do domínio esperado.');
   }
   return parsed;
+}
+
+async function resolveMediaUrl(url, page, fetcher, overall) {
+  const target = validateMediaUrl(url);
+  const challenge = target.searchParams.get('n');
+  if (!challenge) return target;
+
+  const script = page.match(/\/s\/player\/[a-z0-9]+\/(?:[a-zA-Z0-9_-]+\.)?vflset\/[a-zA-Z0-9_-]+\/base\.js/)?.[0];
+  if (!script) throw new SourceError('A página não informou a versão do JavaScript do player.');
+  const scriptUrl = new URL(script, 'https://www.youtube.com');
+
+  try {
+    const response = await fetcher(scriptUrl, {
+      headers: WATCH_HEADERS,
+      redirect: 'error',
+      signal: AbortSignal.any([overall, AbortSignal.timeout(15_000)]),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new SourceError(`O JavaScript do player retornou HTTP ${response.status}.`);
+    }
+    const [quickjs, library, core, player] = await Promise.all([
+      getQuickJS(),
+      readFile(new URL('./solver/lib.min.js', import.meta.url), 'utf8'),
+      readFile(new URL('./solver/core.min.js', import.meta.url), 'utf8'),
+      response.text(),
+    ]);
+    const input = { type: 'player', player, requests: [{ type: 'n', challenges: [challenge] }] };
+    const result = quickjs.evalCode(`${library}\nObject.assign(globalThis, lib);\n${core}\njsc(${JSON.stringify(input)});`, {
+      shouldInterrupt: shouldInterruptAfterDeadline(Date.now() + 15_000),
+      memoryLimitBytes: 96 * 1024 * 1024,
+      maxStackSizeBytes: 1024 * 1024,
+    });
+    const decoded = result?.responses?.[0]?.data?.[challenge];
+    if (typeof decoded !== 'string' || !decoded || decoded === challenge || decoded.startsWith('enhanced_except_')) {
+      throw new Error('Player challenge did not resolve');
+    }
+    // Avoid reserializing the other parameters of the signed URL.
+    target.search = target.search.replace(/([?&])n=[^&]*/, (_, separator) =>
+      `${separator}n=${encodeURIComponent(decoded)}`);
+    return target;
+  } catch (error) {
+    if (error instanceof SourceError) throw error;
+    throw new SourceError('O extrator não conseguiu resolver o parâmetro n do player.');
+  }
 }
 
 async function mediaResponse(fetcher, url, options, overall, sabr = false) {
@@ -74,7 +121,7 @@ async function readSabr(page, player, videoId, formats, path, fetcher, overall) 
   let mediaError;
   const stream = new SabrStream({
     videoId,
-    serverAbrStreamingUrl: validateMediaUrl(streamingUrl).href,
+    serverAbrStreamingUrl: (await resolveMediaUrl(streamingUrl, page, fetcher, overall)).href,
     videoPlaybackUstreamerConfig: config,
     formats: formats.map(buildSabrFormat),
     clientInfo: {
@@ -148,7 +195,8 @@ export async function extract(videoId, path, fetcher = fetch) {
   const direct = formats.filter(format => format.url).sort((a, b) => b.bitrate - a.bitrate)[0];
   if (!formats.length) throw new SourceError('O player não forneceu faixas de áudio compatíveis.');
   if (direct) {
-    const response = await mediaResponse(fetcher, direct.url, undefined, overall);
+    const url = await resolveMediaUrl(direct.url, page, fetcher, overall);
+    const response = await mediaResponse(fetcher, url, undefined, overall);
     await writeAudio(response.body, path, overall);
   } else {
     await readSabr(page, player, videoId, formats, path, fetcher, overall);
