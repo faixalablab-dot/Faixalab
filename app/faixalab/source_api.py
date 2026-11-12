@@ -140,7 +140,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='FaixaLab — API de áudio')
     parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=7870)
+    parser.add_argument('--port', type=int, default=os.environ.get('PORT', '7870'))
     parser.add_argument('--data-dir', type=Path, default=Path(os.environ.get(
         'FAIXALAB_AUDIO_SOURCE_DATA', str(Path.home() / '.faixalab-audio-source'))))
     args = parser.parse_args()

@@ -1,0 +1,10 @@
+services:
+  - name: faixalab-audio-teste
+    type: web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./cloud/Dockerfile.source
+    autoDeployTrigger: "off"
+    envVars:
+      - key: FAIXALAB_AUDIO_SOURCE_KEY
+        generateValue: true
