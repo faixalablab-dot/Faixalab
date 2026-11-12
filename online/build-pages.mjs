@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.dirname(here);
-const [destination, server] = process.argv.slice(2);
+const [destination, server, signIn] = process.argv.slice(2);
 if (!destination || !server) {
-  throw new Error('Uso: node online/build-pages.mjs DIRETORIO NOME_DO_CODESPACE|ORIGEM_HTTPS_DA_API');
+  throw new Error('Uso: node online/build-pages.mjs DIRETORIO NOME_DO_CODESPACE|ORIGEM_HTTPS_DA_API [--google-only]');
 }
 const codespace = /^[a-z0-9-]+$/.test(server) ? server : null;
+const ownerLogin = codespace && signIn !== '--google-only';
 const backendUrl = codespace ? null : new URL(server);
 if (backendUrl && (backendUrl.protocol !== 'https:' || backendUrl.pathname !== '/' ||
                     backendUrl.username || backendUrl.password || backendUrl.search || backendUrl.hash)) {
@@ -28,8 +29,9 @@ const connectionScript = readFileSync(path.join(here, 'pages-connection.js'));
 const connectionVersion = version(connectionScript);
 writeFileSync(path.join(output, 'pages-connection.js'), connectionScript);
 const config = codespace
-  ? { backend: `https://${codespace}-7861.app.github.dev`, connect: `https://${codespace}-7860.app.github.dev/connect-pages` }
+  ? { backend: `https://${codespace}-7861.app.github.dev` }
   : { backend: backendUrl.origin };
+if (ownerLogin) config.connect = `https://${codespace}-7860.app.github.dev/connect-pages`;
 const configScript = 'window.faixaLabPagesConfig = ' + JSON.stringify(config) + ';\n';
 writeFileSync(path.join(output, 'pages-config.js'), configScript);
 
@@ -45,7 +47,7 @@ const html = readFileSync(path.join(web, 'index.html'), 'utf8')
       <aside id="pages-connection" role="status" hidden>
         <span></span>
         <div id="pages-google" hidden></div>
-        ${codespace ? `<button class="button primary" id="pages-owner-connect" type="button" data-resume-url="https://${codespace}.github.dev">Conectar ao FaixaLab</button>` : ''}
+        ${ownerLogin ? `<button class="button primary" id="pages-owner-connect" type="button" data-resume-url="https://${codespace}.github.dev">Conectar ao FaixaLab</button>` : ''}
       </aside>`)
   .replace('<div class="top-actions">', '<div class="top-actions"><button id="pages-signout" class="button secondary" hidden>Sair</button>')
   .replace('</head>', '<style>#pages-connection:not([hidden]){display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;background:#1d272a;color:#dde7ea;border-bottom:1px solid #3b4950;flex-wrap:wrap}#pages-connection [hidden],#pages-signout[hidden]{display:none}</style>\n  </head>');

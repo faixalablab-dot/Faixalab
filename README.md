@@ -6,25 +6,23 @@ A correção 0.10.1 valida e prepara o runtime JavaScript usado pelo YouTube, pr
 
 A atualização **playback1** corrige o ciclo de tocar, pausar para carregar e descartar o buffer. Há um pacote pequeno que atualiza somente a interface de uma instalação 0.10.1 e reaproveita os projetos e modelos. Testes e limites: [app/VALIDACAO_REPRODUCAO_0_10_1.md](app/VALIDACAO_REPRODUCAO_0_10_1.md).
 
-## Versão online — primeira etapa
+## Versão online
 
-A [interface do FaixaLab Online](https://faixalab-marcelo.nainho5.chatgpt.site) foi publicada com acesso privado pela conta ChatGPT do proprietário. O dicionário real acompanha o site. **O servidor de IA ainda não foi provisionado ou conectado; o site informa esse estado e bloqueia novas importações.**
+O [GitHub Pages do FaixaLab](https://faixalablab-dot.github.io/Faixalab/) hospeda a interface e o dicionário de acordes. O servidor em [faixalablab-dot/mvlab](https://github.com/faixalablab-dot/mvlab) processa as músicas e serve a biblioteca de cada conta Google. Siga as instruções do `mvlab` para vincular um Codespace e publicar o site.
 
 O gateway, a imagem CPU do servidor, a validação de acesso e os testes estão em [online/README.md](online/README.md). O site e a IA são serviços separados: este código não transforma GitHub Pages em servidor de modelos nem provisiona máquinas ou planos pagos. O aplicativo Windows continua funcionando como antes.
 
 As medições e os limites da otimização estão em [app/VALIDACAO.md](app/VALIDACAO.md); a validação anterior foi preservada em [app/VALIDACAO_0_9.md](app/VALIDACAO_0_9.md). Os testes foram realizados em CPU Linux; o caminho CUDA e a execução nativa Windows ainda exigem validação em hardware correspondente. Não há comparação direta que estabeleça desempenho ou qualidade superior ao Moises.
 
-## Ativar o FaixaLab neste repositório
+## Preparar o pacote de modelos
 
-1. A configuração de inicialização fica neste repositório. O código-fonte editável fica na pasta `app/`. Os modelos grandes são obtidos do ZIP do release.
-2. Crie um release com a tag **v0.10.1** e anexe **FaixaLab_0_10_1_Windows.zip**, o aplicativo completo recebido nesta atualização. O nome contém Windows por compatibilidade com o pacote existente; ele também contém o servidor Linux.
-3. Abra **Code → Codespaces → Create codespace**, escolhendo **2 núcleos / 8 GB**.
-4. Aguarde o `postCreateCommand`; ele baixa o release com a identidade do Codespace, confere tamanho, SHA-256 e CRC, extrai o app e instala Python/PyTorch CPU. Os modelos maiores ainda ausentes serão baixados no primeiro processamento.
-5. Na aba **Ports**, abra a porta **7860**, mantendo visibilidade **Private**. No celular, entre no mesmo GitHub e abra essa URL.
+1. Crie um release com a tag **v0.10.1** neste repositório e anexe **FaixaLab_0_10_1_Windows.zip**.
+2. Crie o Codespace pelo [mvlab](https://github.com/faixalablab-dot/mvlab), com **2 núcleos / 8 GB**.
+3. Aguarde a instalação automática, que confere tamanho, SHA-256 e CRC do ZIP. Os modelos maiores ausentes são baixados no primeiro processamento.
 
 O manifesto `release.json` fixa o pacote exato. Não troque o ZIP do release por outro arquivo sem atualizar tamanho e SHA-256. O código-fonte em `app/` é executado pelo servidor. O ZIP do release fornece os modelos binários verificados; os arquivos grandes não entram no histórico Git.
 
-O bootstrap usa o `GITHUB_TOKEN` temporário que o Codespaces fornece automaticamente para o próprio repositório. Não cole tokens no código nem no chat. Nenhuma chave de API de IA é necessária.
+O `mvlab` baixa o release público ou usa uma cópia local do mesmo pacote na primeira instalação.
 
 ## Usar e retomar
 
@@ -33,8 +31,8 @@ O bootstrap usa o `GITHUB_TOKEN` temporário que o Codespaces fornece automatica
 - Conecte o Bluetooth nas configurações do celular. Não é necessário parear pelo navegador.
 - Projetos e modelos ficam em `/workspaces/.faixalab-data`, fora do checkout e do Git. A instância parada conserva esses dados; excluir a instância elimina os arquivos que não foram exportados.
 - Pare o Codespace ao terminar. Ao retomá-lo, o `postStartCommand` reinicia o app sem reinstalar os motores.
-- Para iniciar manualmente pelo terminal do Codespaces: `bash cloud/start.sh`.
-- Logs: `/workspaces/.faixalab-data/server.log`.
+- Para iniciar manualmente no Codespace do `mvlab`, execute `bash iniciar-faixalab.sh --background`.
+- Logs do servidor em `.faixalab/server.log` no checkout de `mvlab`.
 
 ## Franquia gratuita e limites verificados em 07/11/2026
 

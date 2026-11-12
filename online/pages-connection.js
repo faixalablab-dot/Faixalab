@@ -105,7 +105,9 @@
     if (connect) await reconnect();
     else {
       googleSetup = undefined;
-      status('A entrada com Google está indisponível. Recarregue o FaixaLab para tentar novamente.');
+      status(await gatewayReady()
+        ? 'A entrada com Google está indisponível. Recarregue o FaixaLab para tentar novamente.'
+        : unavailableMessage);
     }
   }
 

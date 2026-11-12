@@ -14,7 +14,8 @@ function harness(){
  }
  class AudioContext{constructor(){this.destination={};this.state='running'}createDynamicsCompressor(){return {threshold:{},knee:{},ratio:{},connect(){}}}createMediaElementSource(){return {connect(){},disconnect(){}}}createGain(){return {gain:{},connect(){},disconnect(){}}}resume(){this.state='running';return Promise.resolve()}close(){this.state='closed';return Promise.resolve()}}
  const context={Audio,AudioContext,Event,console,performance:{now:()=>now},location:{hostname:'127.0.0.1'},window:{location:{hostname:'127.0.0.1'},matchMedia:()=>({matches:false})},setInterval:()=>1,clearInterval(){},setTimeout:(f,ms)=>{const t=setTimeout(f,ms);t.unref();return t},clearTimeout,URL,document:{},$:element,toast:()=>{},updateMediaSession(){},updateMediaPosition(){}};
- vm.createContext(context);vm.runInContext(definition+'\nthis.Player=StemPlayer;',context);
+ const mediaUrl=source.slice(source.indexOf('function mediaUrl('),source.indexOf('function options()'));
+ vm.createContext(context);vm.runInContext(mediaUrl+'\n'+definition+'\nthis.Player=StemPlayer;',context);
  return {player:new context.Player(),advance:n=>{now+=n},elements};
 }
 function project(revision='old',count=4){return {id:'a'.repeat(32),audio_revision:revision,duration:300,stems:Array.from({length:count},(_,i)=>({name:['vocals','drums','guitar','other'][i]||'stem_'+i,label:'Track '+i,file:revision+'/'+i+'.wav'}))}}

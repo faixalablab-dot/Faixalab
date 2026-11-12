@@ -45,7 +45,7 @@ Em sete controles gravados de 60 s, a verificação de timbres levou 2,222 s na 
 
 ## Usar pelo celular com o PC desligado
 
-A configuração de GitHub Codespaces fica no repositório `Marcelo-Preigschadt/FaixaLab`. O código editável é executado a partir da pasta `app/`; o manifesto `release.json` fixa o pacote do release que fornece os modelos binários. Publicar o app na nuvem exige concluir essa instalação; o código no repositório, sozinho, não inicia um servidor.
+A configuração de GitHub Codespaces fica em [faixalablab-dot/mvlab](https://github.com/faixalablab-dot/mvlab). O servidor executa o código de `app/`. O manifesto `release.json` identifica o pacote de modelos binários.
 
 1. Abra um Codespace do repositório, na máquina de **2 núcleos / 8 GB**.
 2. Aguarde a instalação automática. A primeira instalação baixa dependências e, no primeiro processamento, os modelos maiores ainda ausentes.

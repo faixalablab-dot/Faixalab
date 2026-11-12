@@ -1,0 +1,40 @@
+name: Publicar FaixaLab
+
+'on':
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'faixalablab-dot/Faixalab' && github.ref == 'refs/heads/main' && vars.FAIXALAB_CODESPACE != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Montar o site
+        env:
+          FAIXALAB_CODESPACE: ${{ vars.FAIXALAB_CODESPACE }}
+        run: |
+          if [[ ! "$FAIXALAB_CODESPACE" =~ ^[a-z0-9-]+$ ]]; then
+            echo 'Configure FAIXALAB_CODESPACE com o nome do Codespace.' >&2
+            exit 1
+          fi
+          node online/build-pages.mjs _site "$FAIXALAB_CODESPACE" --google-only
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        id: deploy

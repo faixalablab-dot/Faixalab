@@ -8,7 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../faixalab/web/app.js'), '
 const apiSource = source.slice(source.indexOf('async function api('), source.indexOf('function options()'));
 
 function callApi(response) {
-  const api = vm.runInNewContext(`${apiSource}\napi`, {fetch: async () => response});
+  const api = vm.runInNewContext(`${apiSource}\napi`, {window: {}, fetch: async () => response});
   return api('/api/import/youtube', {method: 'POST'});
 }
 

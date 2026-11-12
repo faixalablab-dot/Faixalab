@@ -192,5 +192,6 @@ if __name__ == '__main__':
                            os.environ['FAIXALAB_PAGES_URL'], os.environ['FAIXALAB_PAGES_KEY'],
                            os.environ.get('FAIXALAB_API_KEY', ''), os.environ.get('FAIXALAB_GOOGLE_CLIENT_ID', '').strip(),
                            owner_google_sub=os.environ.get('FAIXALAB_OWNER_GOOGLE_SUB', '').strip(),
-                           check_upstream_health=os.environ.get('FAIXALAB_REMOTE') == '1'),
+                           check_upstream_health=os.environ.get('FAIXALAB_REMOTE') == '1'
+                           or os.environ.get('CODESPACES') == 'true'),
                 host='0.0.0.0', port=7861, access_log=False)
