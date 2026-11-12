@@ -41,7 +41,8 @@ async function mediaResponse(fetcher, url, options, overall, sabr = false) {
     : mime?.startsWith('audio/') || mime === 'application/octet-stream';
   if (!response.ok || !readable || (!sabr && response.status !== 200) || !response.body) {
     await response.body?.cancel();
-    throw new SourceError(`O servidor de mídia retornou HTTP ${response.status} sem áudio utilizável.`);
+    const type = mime === 'text/html' ? 'HTML' : 'resposta sem mídia compatível';
+    throw new SourceError(`O servidor de mídia retornou HTTP ${response.status} (${type}).`);
   }
   return response;
 }
@@ -82,7 +83,9 @@ async function readSabr(page, player, videoId, formats, path, fetcher, overall) 
     },
     fetchFunction: async (url, options) => {
       try {
-        return await mediaResponse(fetcher, url, options, overall, true);
+        const response = await mediaResponse(fetcher, url, options, overall, true);
+        mediaError = undefined;
+        return response;
       } catch (error) {
         mediaError = error;
         throw error;
@@ -94,7 +97,7 @@ async function readSabr(page, player, videoId, formats, path, fetcher, overall) 
       audioPreferences: { dynamicRangeCompression: false, voiceBoost: false },
       enabledTrackTypes: EnabledTrackTypes.AUDIO_ONLY,
       isPostLiveDvr: false,
-      maxRetries: 1,
+      maxRetries: 0,
       stallDetectionMs: 12_000,
     });
     await writeAudio(audioStream, path, overall);
@@ -117,8 +120,13 @@ export async function extract(videoId, path, fetcher = fetch) {
   const page = await pageResponse.text();
   const player = readPlayer(page);
   const details = player.videoDetails;
-  if (player.playabilityStatus?.status !== 'OK' || details?.videoId !== videoId) {
-    throw new SourceError('O player do YouTube não liberou esse vídeo para reprodução.');
+  const status = player.playabilityStatus?.status;
+  if (status !== 'OK') {
+    const code = /^[A-Z_]{1,40}$/.test(status || '') ? status : 'SEM_STATUS';
+    throw new SourceError(`O player do YouTube não liberou a reprodução (${code}).`);
+  }
+  if (details?.videoId !== videoId) {
+    throw new SourceError('A resposta do player pertence a outro vídeo.');
   }
   const duration = Number(details.lengthSeconds);
   if (details.isLive || !Number.isFinite(duration) || duration <= 0 || duration > MAX_SECONDS) {
