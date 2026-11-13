@@ -40,28 +40,33 @@ def download_youtube(url, folder, cancel, progress):
         except (IndexError, KeyError, TypeError, ValueError):
             raise RuntimeError('O extrator retornou metadados inválidos.') from None
 
-        progress('Verificando o áudio completo', 90)
-        seconds = 0
-        deadline = time.monotonic() + 60
-
-        def read_progress(line):
-            nonlocal seconds
-            field, _, value = line.strip().partition('=')
-            if field == 'out_time_us' and value.isdigit():
-                seconds = int(value) / 1_000_000
-
-        def check_deadline(_):
-            if time.monotonic() > deadline:
-                raise RuntimeError('A validação do áudio excedeu o prazo.')
-
-        try:
-            run_process([ffmpeg_executable(), '-nostdin', '-v', 'error', '-xerror',
-                         '-protocol_whitelist', 'file,pipe', '-i', str(audio), '-map', '0:a:0',
-                         '-progress', 'pipe:1', '-f', 'null', '-'], cancel, read_progress, on_tick=check_deadline)
-        except RuntimeError:
-            raise RuntimeError('O arquivo entregue não passou pela decodificação completa do FFmpeg.') from None
-        if seconds <= 0 or abs(seconds - expected) > max(2, expected * .01):
-            raise RuntimeError(f'O áudio tem {seconds:.1f} s de {expected:.1f} s esperados.')
+        validate_audio(audio, expected, cancel, progress)
         destination = folder / 'youtube-native.audio'
         audio.replace(destination)
         return destination, title
+
+
+def validate_audio(audio, expected, cancel, progress):
+    progress('Verificando o áudio completo', 90)
+    seconds = 0
+    deadline = time.monotonic() + 60
+
+    def read_progress(line):
+        nonlocal seconds
+        field, _, value = line.strip().partition('=')
+        if field == 'out_time_us' and value.isdigit():
+            seconds = int(value) / 1_000_000
+
+    def check_deadline(_):
+        if time.monotonic() > deadline:
+            raise RuntimeError('A validação do áudio excedeu o prazo.')
+
+    try:
+        run_process([ffmpeg_executable(), '-nostdin', '-v', 'error', '-xerror',
+                     '-protocol_whitelist', 'file,pipe', '-i', str(audio), '-map', '0:a:0',
+                     '-progress', 'pipe:1', '-f', 'null', '-'], cancel, read_progress, on_tick=check_deadline)
+    except RuntimeError:
+        raise RuntimeError('O arquivo entregue não passou pela decodificação completa do FFmpeg.') from None
+    if seconds <= 0 or abs(seconds - expected) > max(2, expected * .01):
+        raise RuntimeError(f'O áudio tem {seconds:.1f} s de {expected:.1f} s esperados.')
+    return seconds

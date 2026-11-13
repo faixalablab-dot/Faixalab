@@ -38,9 +38,9 @@ Antes de publicar os arquivos gerados na branch do GitHub Pages, valide o login 
 
 O mesmo servidor de processamento pode importar um link diretamente ou delegar a obtenção do áudio a uma instância própria. A separação, a cifra e a letra continuam no servidor principal.
 
-O container de teste em `cloud/Dockerfile.source` usa o extrator próprio. Configure `FAIXALAB_YOUTUBE_COOKIES` no ambiente **da API de áudio** para que ela possa tentar a sessão da conta dedicada se o player pedir verificação de tráfego. O valor é o conteúdo do arquivo Netscape com cookies do YouTube. O segredo do Codespaces está disponível somente nos repositórios e ambientes autorizados no GitHub.
+O container de teste em `cloud/Dockerfile.source` usa o Invidious Companion. Ao iniciar, tenta importar `7iNbnineUCI` e `aqz-KE-bpKQ` e registra o resultado nos logs do serviço. O estado dos pedidos também está disponível nas rotas autenticadas abaixo. O Companion escuta apenas em loopback. Defina `FAIXALAB_RUN_COMPANION_TRIAL=0` para desabilitar o teste automático na inicialização.
 
-Para validar o extrator no host de destino antes de conectar o separador, execute o teste abaixo com IDs de vídeos que você pode processar. O arquivo de sessão é opcional e é lido localmente.
+Para validar o extrator próprio do FaixaLab em separado, execute o teste abaixo com IDs de vídeos que você pode processar. O arquivo de sessão é opcional e é lido localmente.
 
 ```bash
 FAIXALAB_YOUTUBE_COOKIE_FILE=/caminho/seguro/cookies.txt \

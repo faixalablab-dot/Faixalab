@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -29,9 +30,19 @@ def create_app(root, key):
     stop = Event()
     pool = None
     extract = download_youtube
-    if os.environ.get('FAIXALAB_YOUTUBE_EXTRACTOR') == 'native':
+    extractor_name = os.environ.get('FAIXALAB_YOUTUBE_EXTRACTOR', 'yt-dlp')
+    companion = None
+    trial_videos = ()
+    if extractor_name == 'native':
         from .youtube_native import download_youtube as extract
         root /= 'native'
+    elif extractor_name == 'companion':
+        from .youtube_companion import Companion, VIDEOS
+        companion = Companion()
+        extract = companion.download
+        root /= 'companion'
+        if os.environ.get('FAIXALAB_RUN_COMPANION_TRIAL') == '1':
+            trial_videos = VIDEOS
 
     @asynccontextmanager
     async def lifespan(_app):
@@ -40,11 +51,17 @@ def create_app(root, key):
         jobs.clear()
         pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='faixalab-source')
         try:
+            if trial_videos:
+                for identifier in trial_videos:
+                    jobs[identifier] = queued_job(identifier)
+                pool.submit(run_trial)
             yield
         finally:
             stop.set()
             pool.shutdown(wait=True, cancel_futures=True)
             pool = None
+            if companion:
+                companion.close()
 
     def authorize(request: Request):
         supplied = request.headers.get('authorization', '').encode('utf-8')
@@ -71,6 +88,9 @@ def create_app(root, key):
         with lock:
             jobs[identifier].update(changes)
 
+    def queued_job(identifier):
+        return {'id': identifier, 'status': 'queued', 'stage': 'Na fila', 'progress': 0}
+
     def run(identifier):
         directory = root / identifier
         update(identifier, status='processing', stage='Preparando o vídeo', progress=1)
@@ -88,13 +108,24 @@ def create_app(root, key):
         except Exception as exc:
             update(identifier, status='failed', error=str(exc)[-1500:], stage='A importação falhou')
 
+    def run_trial():
+        logger = logging.getLogger('uvicorn.error')
+        for identifier in trial_videos:
+            if stop.is_set():
+                return
+            run(identifier)
+            with lock:
+                result = dict(jobs[identifier])
+            logger.info('Teste Companion %s: %s', identifier, result.get('error', result['status']))
+
     @app.get('/v1/health')
     def health():
-        if extract is not download_youtube:
-            return {'status': 'ok', 'service': 'faixalab-audio-source', 'extractor': 'native'}
-        return {'status': 'ok', 'service': 'faixalab-audio-source'}
+        info = {'status': 'ok', 'service': 'faixalab-audio-source'}
+        if extractor_name in {'native', 'companion'}:
+            info['extractor'] = extractor_name
+        return info
 
-    if os.environ.get('FAIXALAB_ENABLE_POT_AB') == '1':
+    if companion is None and os.environ.get('FAIXALAB_ENABLE_POT_AB') == '1':
         from .pot_ab_test import run_probe
 
         probe = {'status': 'idle', 'rows': []}
@@ -141,7 +172,7 @@ def create_app(root, key):
                 return {'id': identifier, 'status': 'ready', 'title': cached[1], 'progress': 100}
             if pool is None:
                 raise HTTPException(503, 'A API de áudio está iniciando.')
-            job = {'id': identifier, 'status': 'queued', 'stage': 'Na fila', 'progress': 0}
+            job = queued_job(identifier)
             jobs[identifier] = job
             pool.submit(run, identifier)
             return dict(job)
