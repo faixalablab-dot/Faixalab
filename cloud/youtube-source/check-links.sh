@@ -13,6 +13,29 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0
     exit 2
 fi
 
+session_cookie=
+if [[ -n "${FAIXALAB_YOUTUBE_COOKIES:-}${FAIXALAB_YOUTUBE_COOKIE_FILE:-}" ]]; then
+    session_cookie=$(PYTHONPATH="$directory/../../app" python3 - <<'PY'
+from pathlib import Path
+import os
+from faixalab.youtube_support import YouTubeSupportError, youtube_watch_cookie
+
+try:
+    filename = os.environ.get('FAIXALAB_YOUTUBE_COOKIE_FILE')
+    cookie = youtube_watch_cookie(Path(filename).read_text('utf-8') if filename else None)
+    if not cookie:
+        raise YouTubeSupportError('O arquivo de sessão do YouTube está vazio.')
+    print(cookie)
+except (OSError, UnicodeError):
+    raise SystemExit('Não foi possível ler o arquivo de sessão do YouTube.') from None
+except YouTubeSupportError as error:
+    raise SystemExit(str(error)) from None
+PY
+    )
+    printf 'Sessão da conta dedicada disponível para a verificação do player.\n'
+fi
+unset FAIXALAB_YOUTUBE_COOKIES
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -48,7 +71,7 @@ passed=0
 for video in "${videos[@]}"; do
     audio="$work/audio.download"
     rm -f "$audio"
-    if metadata=$(node "$work/extract.mjs" "$video" "$audio") &&
+    if metadata=$(FAIXALAB_YOUTUBE_WATCH_COOKIE="$session_cookie" node "$work/extract.mjs" "$video" "$audio") &&
         progress=$("$ffmpeg_bin" -nostdin -v error -xerror -protocol_whitelist file,pipe \
             -i "$audio" -map 0:a:0 -progress pipe:1 -f null -) &&
         result=$(node -e '

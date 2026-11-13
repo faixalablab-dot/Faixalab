@@ -36,9 +36,18 @@ Antes de publicar os arquivos gerados na branch do GitHub Pages, valide o login 
 
 ## API de áudio do FaixaLab
 
-O mesmo servidor de processamento pode importar um link diretamente ou delegar a obtenção do áudio a uma instância própria. A API de áudio executa apenas `yt-dlp`. A separação, a cifra e a letra continuam no servidor principal.
+O mesmo servidor de processamento pode importar um link diretamente ou delegar a obtenção do áudio a uma instância própria. A separação, a cifra e a letra continuam no servidor principal.
 
-No host da API, instale as dependências em um ambiente Python 3.12, configure `FAIXALAB_AUDIO_SOURCE_KEY` com uma chave aleatória e execute a partir de `app/`.
+O container de teste em `cloud/Dockerfile.source` usa o extrator próprio. Configure `FAIXALAB_YOUTUBE_COOKIES` no ambiente **da API de áudio** para que ela possa tentar a sessão da conta dedicada se o player pedir verificação de tráfego. O valor é o conteúdo do arquivo Netscape com cookies do YouTube. O segredo do Codespaces está disponível somente nos repositórios e ambientes autorizados no GitHub.
+
+Para validar o extrator no host de destino antes de conectar o separador, execute o teste abaixo com IDs de vídeos que você pode processar. O arquivo de sessão é opcional e é lido localmente.
+
+```bash
+FAIXALAB_YOUTUBE_COOKIE_FILE=/caminho/seguro/cookies.txt \
+  bash cloud/youtube-source/check-links.sh ID_VIDEO_1 ID_VIDEO_2
+```
+
+Para usar o modo padrão com `yt-dlp` fora desse container, instale as dependências em um ambiente Python 3.12, configure `FAIXALAB_AUDIO_SOURCE_KEY` com uma chave aleatória e execute a partir de `app/`.
 
 ```bash
 python -m pip install -r requirements-source.txt

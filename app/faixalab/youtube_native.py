@@ -8,6 +8,13 @@ from tempfile import TemporaryDirectory
 import time
 
 from .media import ffmpeg_executable, run_process, youtube_id
+from .youtube_support import youtube_watch_cookie
+
+
+NODE_ENV = {
+    'PATH', 'SYSTEMROOT', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
+}
 
 
 def download_youtube(url, folder, cancel, progress):
@@ -16,11 +23,16 @@ def download_youtube(url, folder, cancel, progress):
     entry = Path(os.environ.get('FAIXALAB_YOUTUBE_NATIVE_SCRIPT', '/opt/youtube-source/extract.mjs'))
     if not node or not entry.is_file():
         raise RuntimeError('O extrator experimental do YouTube não está instalado.')
+    cookie = youtube_watch_cookie()
+    env = {name: value for name, value in os.environ.items() if name.upper() in NODE_ENV}
+    if cookie:
+        env['FAIXALAB_YOUTUBE_WATCH_COOKIE'] = cookie
     with TemporaryDirectory(dir=folder, prefix='.youtube-native-') as directory:
         audio = Path(directory) / 'audio.download'
         output = []
         progress('Lendo o player do YouTube', 3)
-        run_process([node, '--use-env-proxy', str(entry), identifier, str(audio)], cancel, output.append)
+        run_process([node, '--use-env-proxy', str(entry), identifier, str(audio)],
+                    cancel, output.append, env=env)
         try:
             result = json.loads(output[-1])
             expected = float(result['duration'])

@@ -10,6 +10,7 @@ import { getQuickJS, shouldInterruptAfterDeadline } from 'quickjs-emscripten';
 const MAX_BYTES = 32 * 1024 * 1024;
 const MAX_SECONDS = 900;
 const WATCH_HEADERS = { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'en-US' };
+const LOGIN_CHECK = /not a bot|confirm.*(?:human|tr[aá]fego)|confirmar que voc[eê] n[aã]o [eé] um rob[oô]/i;
 
 class SourceError extends Error {}
 
@@ -155,11 +156,9 @@ async function readSabr(page, player, videoId, formats, path, fetcher, overall) 
   }
 }
 
-export async function extract(videoId, path, fetcher = fetch) {
-  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) throw new SourceError('ID de vídeo inválido.');
-  const overall = AbortSignal.timeout(90_000);
+async function readWatchPage(videoId, fetcher, overall, cookie) {
   const pageResponse = await fetcher(`https://www.youtube.com/watch?v=${videoId}`, {
-    headers: WATCH_HEADERS,
+    headers: cookie ? { ...WATCH_HEADERS, Cookie: cookie } : WATCH_HEADERS,
     redirect: 'manual',
     signal: AbortSignal.any([overall, AbortSignal.timeout(15_000)]),
   });
@@ -172,17 +171,37 @@ export async function extract(videoId, path, fetcher = fetch) {
     }
     throw new SourceError(`A página do vídeo redirecionou a requisição (HTTP ${pageResponse.status}).`);
   }
-  if (!pageResponse.ok) throw new SourceError(`A página do vídeo retornou HTTP ${pageResponse.status}.`);
-  const page = await pageResponse.text();
-  const player = readPlayer(page);
+  if (!pageResponse.ok) {
+    await pageResponse.body?.cancel();
+    throw new SourceError(`A página do vídeo retornou HTTP ${pageResponse.status}.`);
+  }
+  return pageResponse.text();
+}
+
+export async function extract(videoId, path, fetcher = fetch, cookie = '') {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) throw new SourceError('ID de vídeo inválido.');
+  const overall = AbortSignal.timeout(90_000);
+  let page = await readWatchPage(videoId, fetcher, overall);
+  let player = readPlayer(page);
+  const playability = player.playabilityStatus;
+  const usingSession = Boolean(cookie) && playability?.status === 'LOGIN_REQUIRED'
+    && LOGIN_CHECK.test(playability.reason || '');
+  if (usingSession) {
+    page = await readWatchPage(videoId, fetcher, overall, cookie);
+    player = readPlayer(page);
+  }
   const details = player.videoDetails;
   const status = player.playabilityStatus?.status;
   if (status !== 'OK') {
     const code = /^[A-Z_]{1,40}$/.test(status || '') ? status : 'SEM_STATUS';
-    throw new SourceError(`O player do YouTube não liberou a reprodução (${code}).`);
+    const attempt = usingSession ? ' para a sessão do FaixaLab' : '';
+    throw new SourceError(`O player do YouTube não liberou a reprodução${attempt} (${code}).`);
   }
   if (details?.videoId !== videoId) {
     throw new SourceError('A resposta do player pertence a outro vídeo.');
+  }
+  if (details.isPrivate) {
+    throw new SourceError('O FaixaLab não importa vídeos privados da conta de serviço.');
   }
   const duration = Number(details.lengthSeconds);
   if (details.isLive || !Number.isFinite(duration) || duration <= 0 || duration > MAX_SECONDS) {
@@ -208,7 +227,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const [, , videoId, path] = process.argv;
     if (!path) throw new SourceError('Informe o destino do áudio.');
-    console.log(JSON.stringify(await extract(videoId, path)));
+    const cookie = process.env.FAIXALAB_YOUTUBE_WATCH_COOKIE;
+    delete process.env.FAIXALAB_YOUTUBE_WATCH_COOKIE;
+    console.log(JSON.stringify(await extract(videoId, path, fetch, cookie)));
   } catch (error) {
     console.error(error instanceof SourceError ? error.message : 'Falha de rede ou de leitura do stream do YouTube.');
     process.exitCode = 1;

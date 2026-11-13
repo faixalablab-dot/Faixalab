@@ -1,5 +1,6 @@
 """YouTube prerequisites, independent of the launcher and current directory."""
 from contextlib import contextmanager
+from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
 import importlib.metadata
 import json
 import os
@@ -8,6 +9,7 @@ import re
 import shutil
 import subprocess
 from tempfile import TemporaryDirectory
+from urllib.request import Request
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -22,12 +24,10 @@ class YouTubeSupportError(RuntimeError):
     pass
 
 
-@contextmanager
-def youtube_cookiefile():
-    secret = os.environ.get(COOKIE_SECRET, '').removeprefix('\ufeff')
+def _youtube_cookie_lines(secret=None):
+    secret = (os.environ.get(COOKIE_SECRET, '') if secret is None else secret).removeprefix('\ufeff')
     if not secret.strip():
-        yield None
-        return
+        return []
 
     lines = secret.splitlines()
     if lines[0] not in {'# Netscape HTTP Cookie File', '# HTTP Cookie File'}:
@@ -51,12 +51,47 @@ def youtube_cookiefile():
         cookies.append(line)
     if not cookies:
         raise YouTubeSupportError(f'O segredo {COOKIE_SECRET} não contém cookies do YouTube.')
+    return [lines[0], *cookies]
+
+
+def youtube_watch_cookie(secret=None):
+    lines = _youtube_cookie_lines(secret)
+    if not lines:
+        return ''
+    jar = CookieJar(DefaultCookiePolicy(strict_ns_domain=DefaultCookiePolicy.DomainStrictNonDomain))
+    for line in lines[1:]:
+        domain, subdomains, path, secure, expires, name, value = line.removeprefix('#HttpOnly_').split('\t')
+        if not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name) or not re.fullmatch(
+                r'[\x21\x23-\x2b\x2d-\x3a\x3c-\x5b\x5d-\x7e]*', value):
+            raise YouTubeSupportError(f'O segredo {COOKIE_SECRET} contém um cookie inválido.')
+        expiry = int(expires.partition('.')[0]) if expires else 0
+        domain_cookie = subdomains == 'TRUE'
+        jar.set_cookie(Cookie(
+            version=0, name=name, value=value, port=None, port_specified=False,
+            domain=domain.lower(), domain_specified=domain_cookie, domain_initial_dot=domain_cookie,
+            path=path, path_specified=True, secure=secure == 'TRUE',
+            expires=expiry or None, discard=not expiry, comment=None, comment_url=None, rest={},
+        ))
+    request = Request('https://www.youtube.com/watch')
+    jar.add_cookie_header(request)
+    header = request.get_header('Cookie', '')
+    if not header:
+        raise YouTubeSupportError(f'O segredo {COOKIE_SECRET} não contém cookies válidos para o player.')
+    return header
+
+
+@contextmanager
+def youtube_cookiefile():
+    lines = _youtube_cookie_lines()
+    if not lines:
+        yield None
+        return
 
     with TemporaryDirectory(prefix='faixalab-youtube-') as directory:
         path = Path(directory) / 'cookies.txt'
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as handle:
-            handle.write('\n'.join([lines[0], *cookies, '']))
+            handle.write('\n'.join([*lines, '']))
         yield str(path)
 
 

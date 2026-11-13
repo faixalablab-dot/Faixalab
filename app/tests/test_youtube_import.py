@@ -23,6 +23,23 @@ SUPPORTED = {**VERSIONS, 'runtime': {'name': 'deno', 'path': '/private/deno', 'v
 TEST_COOKIES = '# Netscape HTTP Cookie File\n#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfixture-value\n'
 
 
+class WatchCookieChecks(unittest.TestCase):
+    def test_watch_cookie_respects_domain_path_and_expiration(self):
+        secret = TEST_COOKIES + (
+            '.youtube.com\tTRUE\t/\tTRUE\t1\tEXPIRED\tno\n'
+            '.youtube.com\tTRUE\t/account\tTRUE\t0\tWRONG_PATH\tno\n'
+            'youtube.com\tFALSE\t/\tTRUE\t0\tHOST_ONLY\tno\n'
+            'music.youtube.com\tFALSE\t/\tTRUE\t0\tSIBLING\tno\n'
+            'www.youtube.com\tFALSE\t/watch\tTRUE\t0\tWATCH\tyes\n'
+        )
+        self.assertEqual(support.youtube_watch_cookie(secret), 'WATCH=yes; TEST=fixture-value')
+
+    def test_invalid_cookie_is_not_exposed_in_the_error(self):
+        with self.assertRaisesRegex(support.YouTubeSupportError, 'cookie inválido') as error:
+            support.youtube_watch_cookie(TEST_COOKIES.replace('fixture-value', 'secret;invalid'))
+        self.assertNotIn('secret', str(error.exception))
+
+
 class RuntimeChecks(unittest.TestCase):
     def test_private_runtime_precedes_global_deno_even_outside_app_directory(self):
         with tempfile.TemporaryDirectory() as temporary, ExitStack() as stack:
